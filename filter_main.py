@@ -21,6 +21,7 @@ def parse_args():
                                                                   "readable by lm_dataformat")
     parser.add_argument("--filter_langs", type=str, nargs="+", default=[], help="if present, will copy files matching selected lang "
                                                                     "to a new directory / archive")
+    parser.add_argument("--filter_reliable", action="store_true", help="if true, removes unreliable detections")
     return parser.parse_args()
 
 def detect_single_doc(doc):
@@ -44,13 +45,18 @@ def detect_single_doc_archive(doc):
                         "extra_info": details})
     return [doc, meta]
 
-def move_files(results, languages):
+def move_files(results, languages, filter_reliable=False):
     for k, v in results.items():
         if v['primary_language'] in languages:
             move_location = f"out/{v['primary_language']}"
             if not os.path.isdir(move_location):
-                os.makedirs(move_location, exist_ok=True)
-                shutil.copy(k, move_location)
+                if filter_reliable:
+                    if v['is_reliable']:
+                        os.makedirs(move_location, exist_ok=True)
+                        shutil.copy(k, move_location)
+                else:
+                    os.makedirs(move_location, exist_ok=True)
+                    shutil.copy(k, move_location)
 
 
 if __name__ == "__main__":
@@ -58,13 +64,10 @@ if __name__ == "__main__":
     docs = glob(f"{args.path_to_dir.strip('/')}/*.txt")
     cpus = cpu_count()
     results = {}
-    with Pool(cpus) as p:
-        if args.is_archive:
-            reader = Reader(args.path_to_dir)
-            r = list(tqdm.tqdm(p.imap(detect_single_doc_archive, reader.stream_data(True))))
-        else:
-            r = list(tqdm.tqdm(p.imap(detect_single_doc, docs), total=len(docs)))
+
     if not args.is_archive:
+        with Pool(cpus) as p:
+            r = list(tqdm.tqdm(p.imap(detect_single_doc, docs), total=len(docs)))
         for i in r:
             results[i[0]] = i[1]
         with open(f"{args.path_to_dir}_results.json", 'w') as fp:
@@ -76,11 +79,14 @@ if __name__ == "__main__":
         archives = {}
         for l in args.filter_langs:
             archives[l] = Archive(f"out/{l}")
-        for i in r:
-            if i[1]["primary_language"] in args.filter_langs:
-                archives[i[1]["primary_language"]].add_data(i[0], meta=i[1])
+        reader = Reader(args.path_to_dir)
+        for doc in tqdm.tqdm(reader.stream_data()):
+            r = detect_single_doc_archive(doc)
+            if r[1]["primary_language"] in args.filter_langs:
+                if args.filter_reliable:
+                    if r[1]['is_reliable']:
+                        archives[r[1]["primary_language"]].add_data(r[0], meta=r[1])
+                else:
+                    archives[r[1]["primary_language"]].add_data(r[0], meta=r[1])
         for _, ar in archives.items():
             ar.commit()
-
-
-
