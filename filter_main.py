@@ -8,9 +8,11 @@ import os
 import shutil
 from lm_dataformat import Reader, Archive
 
-# given a directory of text files
-# for each document, predict language
-# move selected language to a separate repo
+"""
+given a directory of text files
+for each document, predict language
+move selected language to a separate repo
+"""
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -30,11 +32,17 @@ def detect_single_doc(doc):
                         "extra_info": details}]
 
 def detect_single_doc_archive(doc):
+    if isinstance(doc, tuple):
+        print('Meta detected')
+        doc, meta = doc
+    else:
+        meta = {}
     isReliable, _, details = cld2.detect(doc)
-    return [doc, {"lang_detector": "pycld2",
+    meta.update({"lang_detector": "pycld2",
                         "primary_language": details[0][1],
                         "is_reliable": isReliable,
-                        "extra_info": details}]
+                        "extra_info": details})
+    return [doc, meta]
 
 def move_files(results, languages):
     for k, v in results.items():
@@ -53,7 +61,7 @@ if __name__ == "__main__":
     with Pool(cpus) as p:
         if args.is_archive:
             reader = Reader(args.path_to_dir)
-            r = list(tqdm.tqdm(p.imap(detect_single_doc_archive, reader.stream_data())))
+            r = list(tqdm.tqdm(p.imap(detect_single_doc_archive, reader.stream_data(True))))
         else:
             r = list(tqdm.tqdm(p.imap(detect_single_doc, docs), total=len(docs)))
     if not args.is_archive:
