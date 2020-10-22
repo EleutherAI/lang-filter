@@ -6,6 +6,7 @@ from multiprocessing import Pool, cpu_count
 import tqdm
 import os
 import shutil
+import unicodedata
 from lm_dataformat import Reader, Archive
 
 """
@@ -26,7 +27,12 @@ def parse_args():
 
 def detect_single_doc(doc):
     with open(doc, "rb") as txt:
-        isReliable, _, details = cld2.detect(txt.read())
+        try:
+            isReliable, _, details = cld2.detect(txt.read())
+        except:
+            # https://github.com/mikemccand/chromium-compact-language-detector/issues/22#issuecomment-435904616
+            doc_no_ctrl_chars = ''.join([l for l in doc if unicodedata.category(l)[0] not in ['C', ]])
+            isReliable, _, details = cld2.detect(doc_no_ctrl_chars)
         return [doc, {"lang_detector": "pycld2",
                         "primary_language": details[0][1],
                         "is_reliable": isReliable,
@@ -38,7 +44,12 @@ def detect_single_doc_archive(doc):
         doc, meta = doc
     else:
         meta = {}
-    isReliable, _, details = cld2.detect(doc)
+    try:
+        isReliable, _, details = cld2.detect(doc)
+    except:
+        # https://github.com/mikemccand/chromium-compact-language-detector/issues/22#issuecomment-435904616
+        doc_no_ctrl_chars = ''.join([l for l in doc if unicodedata.category(l)[0] not in ['C', ]])
+        isReliable, _, details = cld2.detect(doc_no_ctrl_chars)
     meta.update({"lang_detector": "pycld2",
                         "primary_language": details[0][1],
                         "is_reliable": isReliable,
@@ -80,7 +91,7 @@ if __name__ == "__main__":
         for l in args.filter_langs:
             archives[l] = Archive(f"out/{l}")
         reader = Reader(args.path_to_dir)
-        for doc in tqdm.tqdm(reader.stream_data()):
+        for doc in tqdm.tqdm(reader.stream_data(True)):
             r = detect_single_doc_archive(doc)
             if r[1]["primary_language"] in args.filter_langs:
                 if args.filter_reliable:
