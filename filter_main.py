@@ -40,7 +40,6 @@ def detect_single_doc(doc):
 
 def detect_single_doc_archive(doc):
     if isinstance(doc, tuple):
-        print('Meta detected')
         doc, meta = doc
     else:
         meta = {}
